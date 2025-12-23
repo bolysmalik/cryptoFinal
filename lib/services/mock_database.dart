@@ -1,23 +1,14 @@
-import '../models/block.dart';
-
 class MockDatabase {
-  // Singleton паттерн: один экземпляр на всё приложение
   static final MockDatabase _instance = MockDatabase._internal();
   factory MockDatabase() => _instance;
   MockDatabase._internal();
 
-  // Хранилище данных
-  final List<Map<String, dynamic>> users = []; // {username, passwordHash, salt}
-  final List<Block> blockchain = [];
-  final List<Map<String, String>> messages = []; // {from, to, content}
+  final List<Map<String, dynamic>> users = [];
+  // Новое: список сообщений {from, to, text, timestamp}
+  final List<Map<String, String>> messages = [];
 
-  // Методы для работы с пользователями
   void addUser(String username, String hash, List<int> salt) {
-    users.add({
-      'username': username,
-      'passwordHash': hash,
-      'salt': salt,
-    });
+    users.add({'username': username, 'passwordHash': hash, 'salt': salt});
   }
 
   Map<String, dynamic>? findUser(String username) {
@@ -26,5 +17,23 @@ class MockDatabase {
     } catch (e) {
       return null;
     }
+  }
+
+  // Получить список всех пользователей (кроме текущего, чтобы не писать самому себе)
+  List<String> getAllUsernames(String exceptMe) {
+    return users
+        .map((u) => u['username'] as String)
+        .where((name) => name != exceptMe)
+        .toList();
+  }
+
+  // Сохранить сообщение
+  void addMessage(String from, String to, String text) {
+    messages.add({
+      'from': from,
+      'to': to,
+      'text': text,
+      'time': DateTime.now().toString().substring(11, 16)
+    });
   }
 }
