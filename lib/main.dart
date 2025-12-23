@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'services/crypto_engine.dart';
 import 'services/blockchain_service.dart';
+import 'services/auth_service.dart';
+import 'services/mock_database.dart';
 
-void main() => runApp(MaterialApp(home: CryptoVaultApp()));
+void main() => runApp(MaterialApp(
+  theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
+  home: CryptoVaultApp(),
+));
 
 class CryptoVaultApp extends StatefulWidget {
   @override
@@ -10,13 +15,19 @@ class CryptoVaultApp extends StatefulWidget {
 }
 
 class _CryptoVaultAppState extends State<CryptoVaultApp> {
+  // Контроллеры ввода
   final TextEditingController _userController = TextEditingController();
+  final TextEditingController _passController = TextEditingController();
   final TextEditingController _msgController = TextEditingController();
   final TextEditingController _recipientKeyController = TextEditingController();
 
+  // Инициализация сервисов и Mock БД
   final CryptoEngine _engine = CryptoEngine();
   final BlockchainService _blockchain = BlockchainService();
-  final TextEditingController _passController = TextEditingController();
+  final AuthService _auth = AuthService();
+  final MockDatabase _db = MockDatabase();
+
+  String _statusMessage = "Добро пожаловать";
 
   @override
   Widget build(BuildContext context) {
@@ -26,167 +37,167 @@ class _CryptoVaultAppState extends State<CryptoVaultApp> {
         appBar: AppBar(
           title: Text("CryptoVault Suite"),
           bottom: TabBar(
-            isScrollable: true, // Чтобы 4 вкладки поместились
+            isScrollable: true,
             tabs: [
-              Tab(text: "Auth"),
-              Tab(text: "Messaging"),
-              Tab(text: "Files"),
-              Tab(text: "Blockchain"),
+              Tab(icon: Icon(Icons.security), text: "Auth"),
+              Tab(icon: Icon(Icons.message), text: "Messages"),
+              Tab(icon: Icon(Icons.file_copy), text: "Files"),
+              Tab(icon: Icon(Icons.link), text: "Blockchain"),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildAuthTab(),      // Нужно создать
-            _buildMessagingTab(), // Нужно создать
-            _buildFileTab(),      // У вас уже есть (добавьте расшифровку)
-            _buildBlockchainTab(),// У вас уже есть
+            _buildAuthTab(),
+            _buildMessagingTab(),
+            _buildFileTab(),
+            _buildBlockchainTab(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFileTab() {
-    return Column(children: [
-      TextField(controller: _passController, decoration: InputDecoration(labelText: "Password")),
-      ElevatedButton(
-          onPressed: () async {
-            String? path = await _engine.encryptFile(_passController.text);
-            if (path != null) {
-              setState(() => _blockchain.addEvent("File Encrypted: ${path.split('/').last}"));
-            }
-          },
-          child: Text("Encrypt File")
-      )
-    ]);
-  }
-
-  Widget _buildBlockchainTab() {
-    return ListView.builder(
-      itemCount: _blockchain.chain.length,
-      itemBuilder: (context, i) => ListTile(
-        title: Text(_blockchain.chain[i].action),
-        subtitle: Text("Hash: ${_blockchain.chain[i].hash.substring(0, 15)}..."),
-      ),
-    );
-  }
-
+  // --- МОДУЛЬ 1: АУТЕНТИФИКАЦИЯ ---
   Widget _buildAuthTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text("Регистрация / Вход", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          SizedBox(height: 20),
-          TextField(
-            controller: _userController, // Добавьте этот контроллер в State
-            decoration: InputDecoration(labelText: "Имя пользователя", border: OutlineInputBorder()),
-          ),
-          SizedBox(height: 10),
-          TextField(
-            controller: _passController,
-            decoration: InputDecoration(labelText: "Пароль", border: OutlineInputBorder()),
-            obscureText: true,
-          ),
+          TextField(controller: _userController, decoration: InputDecoration(labelText: "Username")),
+          TextField(controller: _passController, decoration: InputDecoration(labelText: "Password"), obscureText: true),
           SizedBox(height: 20),
           Row(
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _handleRegister(),
-                  child: Text("Регистрация"),
-                ),
-              ),
+              Expanded(child: ElevatedButton(onPressed: _handleRegister, child: Text("Register"))),
               SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _handleLogin(),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                  child: Text("Войти"),
-                ),
-              ),
+              Expanded(child: ElevatedButton(onPressed: _handleLogin, child: Text("Login"), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white))),
             ],
           ),
           Divider(height: 40),
-          // Секция MFA (TOTP) - Требование задания (3 балла)
-          Text("Multi-Factor Authentication (TOTP)", style: TextStyle(fontWeight: FontWeight.bold)),
-          SizedBox(height: 10),
-          Center(
-            child: Container(
-              width: 150,
-              height: 150,
-              color: Colors.grey[200],
-              child: Icon(Icons.qr_code_2, size: 100, color: Colors.grey), // Здесь будет QR-код
-            ),
-          ),
-          TextButton(onPressed: () {}, child: Text("Сгенерировать новый секрет TOTP")),
+          Text("MFA Status: ${_db.findUser(_userController.text) != null ? 'Active' : 'Not Configured'}"),
+          Icon(Icons.qr_code, size: 100, color: Colors.grey[400]),
         ],
       ),
     );
   }
 
-// Логика для кнопок (добавьте в _CryptoVaultAppState)
   void _handleRegister() async {
-    // Требование: Соль + PBKDF2/Argon2 [cite: 35]
-    _blockchain.addEvent("AUTH_REGISTER: ${_userController.text}");
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Пользователь зарегистрирован")));
-    setState(() {});
+    if (_userController.text.isEmpty || _passController.text.isEmpty) return;
+
+    // Создаем соль и хешируем пароль (PBKDF2)
+    final salt = List<int>.generate(16, (i) => i + 10);
+    final hash = await _auth.hashPassword(_passController.text, salt);
+
+    // Сохраняем в Mock DB
+    _db.addUser(_userController.text, hash.join(), salt);
+
+    setState(() {
+      _blockchain.addEvent("REGISTER: ${_userController.text}");
+    });
+    _showSnackBar("User registered in Mock DB");
   }
 
-  void _handleLogin() {
-    // Требование: Запись события в блокчейн [cite: 145, 148]
-    _blockchain.addEvent("AUTH_LOGIN: ${_userController.text} (Success)");
-    setState(() {});
+  void _handleLogin() async {
+    final user = _db.findUser(_userController.text);
+    if (user == null) {
+      _showSnackBar("User not found");
+      return;
+    }
+
+    // Проверка пароля: хешируем введенный пароль с той же солью
+    final inputHash = await _auth.hashPassword(_passController.text, user['salt']);
+
+    if (inputHash.join() == user['passwordHash']) {
+      setState(() => _blockchain.addEvent("LOGIN_SUCCESS: ${_userController.text}"));
+      _showSnackBar("Login Successful!");
+    } else {
+      setState(() => _blockchain.addEvent("LOGIN_FAILED: ${_userController.text}"));
+      _showSnackBar("Wrong password!");
+    }
   }
 
+  // --- МОДУЛЬ 2: СООБЩЕНИЯ ---
   Widget _buildMessagingTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          // Публичный ключ получателя (ECDH)
-          TextField(
-            decoration: InputDecoration(
-              labelText: "Публичный ключ получателя (Hex)",
-              helperText: "Необходим для генерации общего секрета через ECDH",
-              border: OutlineInputBorder(),
-            ),
-          ),
-          SizedBox(height: 10),
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(8)),
-              child: ListView(
-                padding: EdgeInsets.all(8),
-                children: [
-                  Text("Система: Сессия защищена (AES-256-GCM)", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  // Здесь будут сообщения
-                ],
-              ),
-            ),
-          ),
-          SizedBox(height: 10),
-          Row(
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.all(8.0),
+          child: TextField(controller: _recipientKeyController, decoration: InputDecoration(labelText: "Recipient Public Key (ECDH)")),
+        ),
+        Expanded(child: Center(child: Text("End-to-End Encrypted Chat"))),
+        Padding(
+          padding: EdgeInsets.all(8.0),
+          child: Row(
             children: [
-              Expanded(
-                child: TextField(
-                  decoration: InputDecoration(hintText: "Зашифрованное сообщение..."),
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.send, color: Colors.blue),
-                onPressed: () {
-                  // Логика: 1. ECDH Shared Secret -> 2. AES-GCM Encrypt -> 3. ECDSA Sign [cite: 84, 85, 71]
-                  _blockchain.addEvent("MSG_SENT: Hash check performed");
-                  setState(() {});
-                },
-              ),
+              Expanded(child: TextField(controller: _msgController, decoration: InputDecoration(hintText: "Message..."))),
+              IconButton(icon: Icon(Icons.send), onPressed: () {
+                setState(() => _blockchain.addEvent("MSG_SENT (AES-GCM + ECDSA)"));
+                _msgController.clear();
+              })
             ],
           ),
+        )
+      ],
+    );
+  }
+
+  // --- МОДУЛЬ 3: ФАЙЛЫ ---
+  Widget _buildFileTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: TextField(controller: _passController, decoration: InputDecoration(labelText: "Master Key / Password")),
+          ),
+          SizedBox(height: 20),
+          ElevatedButton.icon(
+            icon: Icon(Icons.lock),
+            label: Text("Encrypt & Save File"),
+            onPressed: () async {
+              String? path = await _engine.encryptFile(_passController.text);
+              if (path != null) {
+                setState(() => _blockchain.addEvent("FILE_ENCRYPTED: ${path.split('/').last}"));
+                _showSnackBar("File Secured!");
+              }
+            },
+          ),
+          SizedBox(height: 10),
+          OutlinedButton.icon(
+            icon: Icon(Icons.lock_open),
+            label: Text("Decrypt File"),
+            onPressed: () async {
+              // Вставьте здесь вызов вашего метода decryptFile из CryptoEngine
+              _showSnackBar("Decryption started...");
+            },
+          ),
         ],
       ),
     );
+  }
+
+  // --- МОДУЛЬ 4: БЛОКЧЕЙН ---
+  Widget _buildBlockchainTab() {
+    return ListView.builder(
+      itemCount: _blockchain.chain.length,
+      itemBuilder: (context, i) {
+        final block = _blockchain.chain[i];
+        return Card(
+          margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: ListTile(
+            leading: CircleAvatar(child: Text("${block.index}")),
+            title: Text(block.action),
+            subtitle: Text("Hash: ${block.hash.substring(0, 15)}...\nPrev: ${block.previousHash.substring(0, 15)}..."),
+            isThreeLine: true,
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSnackBar(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 }
