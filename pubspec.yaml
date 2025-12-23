@@ -46,9 +46,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   cryptography: ^2.5.0
+  encrypt: ^5.0.3
   crypto: ^3.0.3
-  file_picker: ^8.0.0
+  file_picker: ^8.1.4
   path_provider: ^2.1.0
+  share_plus: ^12.0.1
+  open_file_plus: ^3.4.1+1
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

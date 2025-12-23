@@ -4,7 +4,7 @@ class MockDatabase {
   MockDatabase._internal();
 
   final List<Map<String, dynamic>> users = [];
-  // Новое: список сообщений {from, to, text, timestamp}
+  // Cписок сообщений {from, to, text, timestamp}
   final List<Map<String, String>> messages = [];
 
   void addUser(String username, String hash, List<int> salt) {
