@@ -6,12 +6,7 @@ import 'services/mock_database.dart';
 
 void main() => runApp(MaterialApp(
   debugShowCheckedModeBanner: false,
-  theme: ThemeData(
-    primarySwatch: Colors.indigo,
-    useMaterial3: true,
-    // Исправлено: если CardTheme вызывает ошибку, мы настраиваем его через copyWith
-    // или используем стандартные значения
-  ),
+  theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
   home: CryptoVaultApp(),
 ));
 
@@ -21,22 +16,20 @@ class CryptoVaultApp extends StatefulWidget {
 }
 
 class _CryptoVaultAppState extends State<CryptoVaultApp> {
-  // Контроллеры ввода
-  final TextEditingController _userController = TextEditingController();
-  final TextEditingController _passController = TextEditingController();
-  final TextEditingController _msgController = TextEditingController();
+  final _userController = TextEditingController();
+  final _passController = TextEditingController();
+  final _msgController = TextEditingController();
 
-  // Инициализация сервисов
-  final CryptoEngine _engine = CryptoEngine();
-  final BlockchainService _blockchain = BlockchainService();
-  final AuthService _auth = AuthService();
-  final MockDatabase _db = MockDatabase();
+  final _engine = CryptoEngine();
+  final _blockchain = BlockchainService();
+  final _auth = AuthService();
+  final _db = MockDatabase();
 
   bool _isLoggedIn = false;
   String? _currentUsername;
+  String? _selectedRecipient; // Выбранный получатель
   String? _lastEncryptedPath;
 
-  // Безопасное форматирование хеша для защиты от RangeError
   String _formatHash(String hash) {
     if (hash.length <= 15) return hash;
     return "${hash.substring(0, 15)}...";
@@ -49,9 +42,7 @@ class _CryptoVaultAppState extends State<CryptoVaultApp> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(_isLoggedIn ? "Vault: $_currentUsername" : "CryptoVault Suite"),
-          actions: _isLoggedIn
-              ? [IconButton(icon: Icon(Icons.logout), onPressed: _handleLogout)]
-              : null,
+          actions: _isLoggedIn ? [IconButton(icon: Icon(Icons.logout), onPressed: _handleLogout)] : null,
           bottom: TabBar(
             isScrollable: true,
             tabs: const [
@@ -74,45 +65,25 @@ class _CryptoVaultAppState extends State<CryptoVaultApp> {
     );
   }
 
-  // Заглушка для закрытых разделов
-  Widget _buildLockedScreen() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(Icons.lock_person, size: 80, color: Colors.grey),
-          SizedBox(height: 10),
-          Text("Пожалуйста, войдите в систему", style: TextStyle(color: Colors.grey)),
-        ],
-      ),
-    );
-  }
+  Widget _buildLockedScreen() => Center(child: Text("Пожалуйста, войдите в систему"));
 
-  // --- Вкладка AUTH ---
+  // --- AUTH TAB ---
   Widget _buildAuthTab() {
     if (_isLoggedIn) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 60),
-            Text("Вы вошли как $_currentUsername", style: const TextStyle(fontSize: 18)),
-          ],
-        ),
-      );
+      return Center(child: Text("Вы вошли как $_currentUsername", style: TextStyle(fontSize: 18)));
     }
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(24),
       child: Column(
         children: [
-          TextField(controller: _userController, decoration: const InputDecoration(labelText: "Имя пользователя")),
-          TextField(controller: _passController, decoration: const InputDecoration(labelText: "Пароль"), obscureText: true),
-          const SizedBox(height: 20),
+          TextField(controller: _userController, decoration: InputDecoration(labelText: "Имя пользователя")),
+          TextField(controller: _passController, decoration: InputDecoration(labelText: "Пароль"), obscureText: true),
+          SizedBox(height: 20),
           Row(
             children: [
-              Expanded(child: ElevatedButton(onPressed: _handleRegister, child: const Text("Регистрация"))),
-              const SizedBox(width: 10),
-              Expanded(child: ElevatedButton(onPressed: _handleLogin, child: const Text("Войти"))),
+              Expanded(child: ElevatedButton(onPressed: _handleRegister, child: Text("Регистрация"))),
+              SizedBox(width: 10),
+              Expanded(child: ElevatedButton(onPressed: _handleLogin, child: Text("Войти"))),
             ],
           ),
         ],
@@ -120,73 +91,114 @@ class _CryptoVaultAppState extends State<CryptoVaultApp> {
     );
   }
 
-  // --- Вкладка MESSAGING ---
+  // --- MESSAGING TAB (ОБНОВЛЕНО) ---
   Widget _buildMessagingTab() {
+    // Получаем список всех пользователей для Dropdown
+    List<String> otherUsers = _db.getAllUsernames(_currentUsername ?? "");
+
     return Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.all(12.0),
-          child: Text("Защищенный канал (ECDH/AES-GCM)", style: TextStyle(color: Colors.green, fontSize: 12)),
-        ),
-        Expanded(child: Center(child: Text("Здесь будут ваши сообщения"))),
+        // Выбор получателя
         Padding(
           padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(child: TextField(controller: _msgController, decoration: const InputDecoration(hintText: "Сообщение..."))),
-              IconButton(icon: const Icon(Icons.send, color: Colors.indigo), onPressed: _handleSendMessage),
-            ],
+          child: DropdownButtonFormField<String>(
+            decoration: InputDecoration(labelText: "Кому отправить", border: OutlineInputBorder()),
+            value: _selectedRecipient,
+            items: otherUsers.map((user) => DropdownMenuItem(value: user, child: Text(user))).toList(),
+            onChanged: (val) => setState(() => _selectedRecipient = val),
           ),
-        )
+        ),
+
+        // Список сообщений (фильтруем только диалог с _selectedRecipient)
+        Expanded(
+          child: _selectedRecipient == null
+              ? Center(child: Text("Выберите пользователя для начала чата"))
+              : ListView(
+            padding: EdgeInsets.all(12),
+            children: _db.messages.where((m) {
+              return (m['from'] == _currentUsername && m['to'] == _selectedRecipient) ||
+                  (m['from'] == _selectedRecipient && m['to'] == _currentUsername);
+            }).map((m) {
+              bool isMe = m['from'] == _currentUsername;
+              return _chatBubble(m['from']!, m['text']!, isMe);
+            }).toList(),
+          ),
+        ),
+
+        // Поле ввода
+        if (_selectedRecipient != null)
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                Expanded(child: TextField(controller: _msgController, decoration: InputDecoration(hintText: "Зашифрованное сообщение..."))),
+                IconButton(icon: Icon(Icons.send, color: Colors.indigo), onPressed: _handleSendMessage),
+              ],
+            ),
+          )
       ],
     );
   }
 
-  // --- Вкладка FILES ---
+  Widget _chatBubble(String sender, String text, bool isMe) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.symmetric(vertical: 4),
+        padding: EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isMe ? Colors.indigo : Colors.grey[300],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Text(sender, style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.black54)),
+            Text(text, style: TextStyle(color: isMe ? Colors.white : Colors.black)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- FILES TAB ---
   Widget _buildFileTab() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.folder_special, size: 60, color: Colors.indigo),
-          const SizedBox(height: 20),
           ElevatedButton.icon(
-            icon: const Icon(Icons.lock),
-            label: const Text("Зашифровать файл"),
+            icon: Icon(Icons.lock),
+            label: Text("Зашифровать файл"),
             onPressed: () async {
               String? path = await _engine.encryptFile(_passController.text);
               if (path != null) {
                 setState(() {
                   _lastEncryptedPath = path;
-                  _blockchain.addEvent("FILE_SECURED: ${path.split('/').last}");
+                  _blockchain.addEvent("FILE_SECURED by $_currentUsername");
                 });
                 _showSnackBar("Файл защищен!");
               }
             },
           ),
-          if (_lastEncryptedPath != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text("Сохранено: ...${_lastEncryptedPath!.split('/').last}", style: const TextStyle(fontSize: 10)),
-            ),
         ],
       ),
     );
   }
 
-  // --- Вкладка BLOCKCHAIN (Ledger) ---
+  // --- LEDGER TAB ---
   Widget _buildBlockchainTab() {
-    final blocks = _blockchain.chain.reversed.toList(); // Показываем новые сверху
+    final blocks = _blockchain.chain.reversed.toList();
     return ListView.builder(
       itemCount: blocks.length,
       itemBuilder: (context, i) {
         final block = blocks[i];
         return Card(
           child: ListTile(
-            leading: const Icon(Icons.link, color: Colors.indigo),
-            title: Text(block.action, style: const TextStyle(fontWeight: FontWeight.bold)),
+            leading: Icon(Icons.link, color: Colors.indigo),
+            title: Text(block.action),
             subtitle: Text("Hash: ${_formatHash(block.hash)}\nPrev: ${_formatHash(block.previousHash)}"),
-            trailing: const Icon(Icons.verified, color: Colors.green, size: 16),
+            trailing: Icon(Icons.verified, color: Colors.green, size: 16),
           ),
         );
       },
@@ -207,8 +219,7 @@ class _CryptoVaultAppState extends State<CryptoVaultApp> {
         return;
       }
     }
-    setState(() => _blockchain.addEvent("LOGIN_FAILED: ${_userController.text}"));
-    _showSnackBar("Доступ запрещен!");
+    _showSnackBar("Ошибка входа!");
   }
 
   void _handleRegister() async {
@@ -218,20 +229,26 @@ class _CryptoVaultAppState extends State<CryptoVaultApp> {
     _db.addUser(_userController.text, hash.join(), salt);
     setState(() => _blockchain.addEvent("USER_CREATED: ${_userController.text}"));
     _showSnackBar("Регистрация успешна!");
+    _userController.clear();
+    _passController.clear();
   }
 
   void _handleLogout() {
     setState(() {
       _isLoggedIn = false;
       _currentUsername = null;
-      _blockchain.addEvent("LOGOUT: $_currentUsername");
+      _selectedRecipient = null;
+      _blockchain.addEvent("LOGOUT");
     });
   }
 
   void _handleSendMessage() {
-    if (_msgController.text.isEmpty) return;
+    if (_msgController.text.isEmpty || _selectedRecipient == null) return;
     setState(() {
-      _blockchain.addEvent("MSG_SENT: AES-GCM Integrity Checked");
+      // Сохраняем сообщение в Mock БД
+      _db.addMessage(_currentUsername!, _selectedRecipient!, _msgController.text);
+      // Логируем событие в блокчейн
+      _blockchain.addEvent("MSG: $_currentUsername -> $_selectedRecipient");
       _msgController.clear();
     });
   }
